@@ -1,0 +1,38 @@
+{
+  "name": "socket",
+  "version": "1.0.0",
+  "description": "Remax (Thailand) Realtime API",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RemaxThailand/Socket.git"
+  },
+  "keywords": [
+    "Remax",
+    "Thailand",
+    "Socket"
+  ],
+  "author": "PowerBolt System",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/RemaxThailand/Socket/issues"
+  },
+  "homepage": "https://github.com/RemaxThailand/Socket#readme",
+  "dependencies": {
+    "bluebird": "^3.5.0",
+    "body-parser": "^1.17.1",
+    "colors": "^1.1.2",
+    "cookie-parser": "^1.4.3",
+    "express": "^4.15.2",
+    "http": "0.0.0",
+    "jade": "^1.11.0",
+    "jsonwebtoken": "^7.3.0",
+    "moment": "^2.18.1",
+    "mssql": "^3.3.0",
+    "path": "^0.12.7",
+    "socket.io": "^1.7.3"
+  }
+}
