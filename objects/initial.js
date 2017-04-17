@@ -41,7 +41,6 @@ exports.loadSystem = function(recordset, data) {
 			}
 		}
 		console.log(colors.yellow('Load ')+colors.cyan('API System Data')+' (Total ' + colors.cyan.bold(recordset.length) + ' records) : ' + colors.bold.green('Success'));
-		console.log(memory.system);
 	}
 	else {
 		console.log(colors.yellow('Load ')+colors.cyan('API System Data')+' : ' + colors.bold.red('No Data'));

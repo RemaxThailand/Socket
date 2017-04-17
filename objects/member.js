@@ -20,17 +20,20 @@ exports.action = function(data) {
 		else if ( data.action == 'basicInfo' ) {
 			this.basicInfoResult(data);
 		}
-		else if ( data.action == 'info' ) {
-			util.getDataKey(this.infoResult, socket, name, data, 'Member-ID:'+clientSocket[data.socket.id].id);
-		}
 		else if ( data.action == 'role' ) {
 			this.roleResult(data);
 		}
 		else if ( data.action == 'roleChange' ) {
-			this.roleChangeResult(data);
+			requiredField = util.completeRequiredFields(data, ['role']);
+			if (requiredField == '') {
+				this.roleChangeResult(data);
+			}
 		}
 		else if ( data.action == 'screen' ) {
-			this.screenResult(data);
+			requiredField = util.completeRequiredFields(data, ['role']);
+			if (requiredField == '') {
+				this.screenResult(data);
+			}
 		}
 		else if ( data.action == 'multipleLoginNotAllow' ) {
 			util.emitToMemberIdExceptSender(data.session.id, data.socket.id, 'logout', {});
@@ -94,7 +97,7 @@ exports.basicInfoResult = function(data) {
 	if ( memory.member.id[data.session.id] == undefined ) {
 		if (data.socket != undefined) {
 			util.responseError(data.socket, data.socketName, {action: data.action, error: 'MBR0005', errorMessage: util.i18n(data.session.local, 'Member Data not found'), info: {} });
-			util.responseToSender(socket, 'logout', { access: false });
+			util.responseToSender(socket, 'logout', {});
 		}
 		else {
 			if (data.res != undefined) data.res.json({success: false, error: 'SOL', errorMessage: 'Allow for Socket.io Only'});
@@ -114,7 +117,7 @@ exports.roleResult = function(data) {
 	if ( memory.member.id[data.session.id] == undefined ) {
 		if (data.socket != undefined) {
 			util.responseError(data.socket, data.socketName, {action: data.action, error: 'MBR0005', errorMessage: util.i18n(data.session.local, 'Member Data not found'), info: {} });
-			util.responseToSender(socket, 'logout', { access: false });
+			util.responseToSender(socket, 'logout', {});
 		}
 		else {
 			if (data.res != undefined) data.res.json({success: false, error: 'SOL', errorMessage: 'Allow for Socket.io Only'});

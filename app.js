@@ -1,11 +1,9 @@
 var express = require('express')
 	, http = require('http')
-	, i18n = require('i18n')
 	, path = require('path')
 	, cookieParser = require('cookie-parser')
 	, bodyParser = require('body-parser') // POST Parameter Data
 	, fs = require('fs')
-//	, redis = require('redis')
 
 global.config = require('./config.js');
 global.util = require('./objects/util');
@@ -13,15 +11,6 @@ global.colors = require('colors/safe');
 global.bluebird = require("bluebird");
 global.clientSocket = {};
 global.memory = {};
-
-i18n.configure({
-	locales: ['th', 'en'],
-	directory: __dirname + '/locales',
-	autoReload: true,
-	syncFiles: true,
-    logErrorFn: function (msg) {  console.log('error', msg) }
-});
-
 
 
 //## - - - - Initial Application - - - - ##//
@@ -32,14 +21,9 @@ app.set('view engine', 'jade');
 
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: config.maxAge1Y }));
-app.use(i18n.init);
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-/*bluebird.promisifyAll(redis.RedisClient.prototype);
-bluebird.promisifyAll(redis.Multi.prototype);
-
-var redisClient = redis.createClient(config.redis);*/
 
 memory.status = {
 	loadedSystemData: false,
@@ -65,7 +49,6 @@ app.get('*', function(req, res) {
 				}).catch(err => {
 					console.error(err);
 				});
-				//util.query(this.syncApi, 'sp_SystemData');
 			}
 		}
 	}

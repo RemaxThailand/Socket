@@ -201,7 +201,9 @@ exports.translateScreen = function(local, list) {
 		if ( group[list[i].screenGroup].name == undefined ) group[list[i].screenGroup].name =  this.i18n(local, 'screen-'+list[i].screenGroup);
 		if ( group[list[i].screenGroup].list == undefined ) group[list[i].screenGroup].list = [];
 		list[i].name = this.i18n(local, 'screen-'+list[i].screen);
-		group[list[i].screenGroup].list.push(list[i]);
+		var screenGroup = list[i].screenGroup;
+		delete list[i].screenGroup;
+		group[screenGroup].list.push(list[i]);
 	}
 	return group;
 }
