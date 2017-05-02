@@ -2,16 +2,19 @@ var express = require('express')
 	, http = require('http')
 	, path = require('path')
 	, cookieParser = require('cookie-parser')
-	, bodyParser = require('body-parser') // POST Parameter Data
+	, bodyParser = require('body-parser')
 	, fs = require('fs')
+	, os = require('os')
 
 global.config = require('./config.js');
 global.util = require('./objects/util');
 global.colors = require('colors/safe');
-global.bluebird = require("bluebird");
+global.bluebird = require('bluebird');
+global.debug = require('debug')('debug');
 global.clientSocket = {};
 global.memory = {};
 
+var memoryStart = os.freemem();
 
 //## - - - - Initial Application - - - - ##//
 var app = express();
@@ -24,38 +27,37 @@ app.use(express.static(path.join(__dirname, 'public'), { maxAge: config.maxAge1Y
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+memory.loaded = {
+	systemData: false,
+	systemAccessData: false,
+	memberData: false,
+	i18nData: false,
+	screenMapping: false,
+	companyData: false
+} // เมื่อโหลดข้อมูลต่างๆ เสร็จ ตัวแปรนี้จะโดนลบออก
+memory.ready = false; // เมื่อโหลดข้อมูลต่างๆ เสร็จ ตัวแปรนี้จะโดนลบออก
 
-memory.status = {
-	loadedSystemData: false,
-	loadedSystemAccessData: false,
-	loadedMemberData: false,
-	loadedi18nData: false,
-	loadedScreenMapping: false
-}
+var initial = require('./objects/initial');
+initial.loadMemberData();
+initial.loadSystemData();
+initial.loadSystemAccessData();
+initial.loadi18nData();
+initial.loadScreenMappingData();
+initial.loadCompanyData();
+checkDataReady(); // ตรวจสอบว่าทำการโหลดข้อมูลจากฐานข้อมูลทั้งหมดว่าเสร็จหรือยัง
+
+//## - - - - Start Application - - - - ##//
+var server = http.createServer(app);
+server.listen(app.get('port'), function(){
+	console.log(util.dateFormat('DDMMYY hh:mm:ss')+' : '+colors.bold.magenta(config.systemName)+colors.green(' System Start (on port ') + colors.red.bold(app.get('port')) + colors.green(')'));
+});
+
 
 //## - - - - HTTP GET - - - - ##//
 app.get('*', function(req, res) {
-	var url = req.url.split('/');
-	url = url.filter(function(n){ return n !== ''; });
-	if (url.length == 0) url[0] = '';
-
-	if (url[0] == 'database') {
-		if (url[1] == 'update') {
-			if (url[2] == 'i18n') {
-				var translate = require('google-translate-api');
-
-				translate('Welcome', {from: 'en', to: 'zh-CN'}).then(data => {
-					res.send(data.text);
-				}).catch(err => {
-					console.error(err);
-				});
-			}
-		}
-	}
-	else {
-		i18n.setLocale('th');
-		res.send(i18n.__('Hello'));
-	}
+	//res.setHeader('Node', 'Panache');
+	//res.send(req.url);
+	res.redirect('https://github.com/RemaxThailand/Socket/wiki');
 });
 
 
@@ -82,20 +84,20 @@ app.post('*', function(req, res) {
 		var systemId = null;
 		if ( req.body.apiKey == undefined ) {
 			if ( req.headers.referer != undefined ) { // ถ้าเข้าระบบโดยใช้ Browser
-				try { systemId = memory.system.origin[req.headers.referer].id } 
+				try { systemId = memory.system.origin[req.headers.referer] } 
 				catch(err) {
 					res.json({ success: false, module: data.module, action: data.action, 
-						error: 'APP0001', errorMessage: i18n.__('This operation is not allowed for')+' origin '+req.headers.referer,
+						error: 'APP0001', errorMessage: util.i18n('en', 'This operation is not allowed for')+' origin '+req.headers.referer,
 						info: { ip: req.headers['x-real-ip'],userAgent: req.headers.user-agent,referer: req.headers.referer }
 					});
 				}
 			}
 		}
 		else {
-			try { systemId = memory.system.key[req.body.apiKey].id }
+			try { systemId = memory.system.key[req.body.apiKey] }
 			catch(err) {
 				res.json({ success: false, module: data.module, action: data.action, 
-					error: 'APP0002', errorMessage: i18n.__('This operation is not allowed for')+' API Key '+req.body.apiKey,
+					error: 'APP0002', errorMessage: util.i18n('en', 'This operation is not allowed for')+' API Key '+req.body.apiKey,
 					info: {ip: req.headers['x-real-ip']}
 				});
 			}
@@ -108,11 +110,11 @@ app.post('*', function(req, res) {
 			data.command = 'sp_SystemAccessCallCount \''+systemId+'\', \''+data.module+'\', \''+data.action+'\'';
 			util.execute(data);
 			var allow = false;
-			try { allow = memory.systemAccess[systemId+'-'+data.module+'-'+data.action].allow } catch(err) {}
+			try { allow = memory.systemAccess[systemId+'-'+data.module+'-'+data.action] } catch(err) {}
 			if ( allow ) {
 				fs.exists('./objects/'+data.module+'.js', function (exists) {
 					if (!exists) {
-						res.json({ success: false, error: 'APP0003', errorMessage: 'Module "'+data.module+ '" ' + i18n.__('is not implemented')});
+						res.json({ success: false, error: 'APP0003', errorMessage: 'Module "'+data.module+ '" ' + util.i18n('en', 'is not implemented')});
 					}
 					else {
 						data.req = req;
@@ -124,79 +126,62 @@ app.post('*', function(req, res) {
 				});
 			}
 			else {
-				res.json({ success: false, error: 'APP0004', errorMessage: 'Module "'+data.module+'" and Action "'+data.action+'" of '+memory.system[systemId].name + ' ' + i18n.__('is not allow')});
+				res.json({ success: false, error: 'APP0004', errorMessage: 'Module "'+data.module+'" and Action "'+data.action+'" of '+memory.system[systemId].name + ' ' + util.i18n('en', 'is not allow')});
 			}
 		}
 		else {
-			res.json({ success: false, error: 'APP0005', errorMessage: i18n.__('Out of Service')});
+			res.json({ success: false, error: 'APP0005', errorMessage: util.i18n('en', 'Out of Service')});
 		}
 		/* - - - ตรวจสอบสิทธิ์การเรียกใช้ Module ต่างๆ ใน API - - - */
 	}
 	else {
-		res.json({ success: false, error: 'APP0006', errorMessage: i18n.__('Module and Action is blank')});
+		res.json({ success: false, error: 'APP0006', errorMessage: util.i18n('en', 'Module and Action is blank')});
 	}
 });
 
-
-
-//## - - - - Start Application - - - - ##//
-var server = http.createServer(app);
-server.listen(app.get('port'), function(){
-	console.log(colors.bold.magenta(config.systemName)+colors.green(' System Start (on port ') + colors.red.bold(app.get('port')) + colors.green(')'));
-});
-
+function checkDataReady(){
+	if (!memory.ready)
+	{
+		setTimeout(function(){
+			checkDataReady();
+		}, 500);
+	}
+	else {
+		console.log(util.dateFormat('DDMMYY hh:mm:ss')+' : '+colors.bold.magenta('Memory Used ')+colors.green(((memoryStart-os.freemem())/1048576).toFixed(2))+' Mb');
+		delete memoryStart;
+		delete memory.ready;
+		startSocketServer();
+	}
+}
 
 //## - - - - Socket.IO - - - - ##//
-
-var initial = require('./objects/initial');
-bluebird.bind({}).then(function() {
-	initial.loadMemberData();
-}).then(function() {
-	initial.loadSystemData();
-}).then(function() {
-	initial.loadSystemAccessData();
-}).then(function() {
-	initial.loadi18nData();
-}).then(function() {
-	initial.loadScreenMappingData();
-}).then(function() {
+function startSocketServer(){
+	debug(colors.bold.magenta('Socket.IO')+colors.green(' Start'));
 
 	global.io = require('socket.io').listen(server);
-
 	io.on('connection', function(socket) {
-
-		if ( memory.online == undefined ) memory.online = {}
-		if ( memory.online.server == undefined ) memory.online.server = 0;
-		if ( memory.online.user == undefined ) memory.online.user = 0;
 
 		// ถ้า Client Connect มาใหม่
 		util.responseToAllClient('online', {
 			count: Object.keys(io.sockets.connected).length
 		});
-		if (config.devMode) console.log(colors.green('Online : ') + colors.red.bold(Object.keys(io.sockets.connected).length));
-		if (memory.status.loadedMemberData) util.responseToSender(socket, 'requestToken', {});
-		else {
-			setTimeout(function(){ util.responseToSender(socket, 'requestToken', {}); }, 5000);
-		}
-		util.responseToAllClient('reload-io', {});
+		debug(colors.green('Online : ') + colors.red.bold(Object.keys(io.sockets.connected).length));
+		util.responseToSender(socket, 'requestToken', {});
 		initial.addUser(socket);
-
-		socket.on('connect', function() {
-		});
 
 		// ถ้า Client Disconnect ออกไป
 		socket.on('disconnect', function() {
 			util.responseToAllClient('online', {
 				count: Object.keys(io.sockets.connected).length
 			});
-			if (config.devMode) console.log(colors.green('disconnected - online : ') + colors.red.bold(Object.keys(io.sockets.connected).length));
+			debug(colors.yellow('disconnected') + colors.green(' - online : ') + colors.red.bold(Object.keys(io.sockets.connected).length));
 			if (clientSocket[socket.id].isServer) {
-				util.responseToAllClient('server-down-'+clientSocket[socket.id].systemId, {});
+				util.responseToAllClientInRoom('client-system-'+clientSocket[socket.id].systemId, 'server-down', {});
 			}
 			else {
-				if (clientSocket[socket.id].id != undefined) {
-					memory.member.id[clientSocket[socket.id].id].sessionList = util.removeArray(memory.member.id[clientSocket[socket.id].id].sessionList, socket.id);
-				}
+				/*if (clientSocket[socket.id].id != undefined) {
+					memory.member[data.session.companyId][clientSocket[socket.id].id].sessionList = util.removeArray(memory.member[data.session.companyId][clientSocket[socket.id].id].sessionList, socket.id);
+				}*/
 			}
 			delete clientSocket[socket.id];
 		});
@@ -207,11 +192,9 @@ bluebird.bind({}).then(function() {
 
 		socket.on('registerServer', function(data) {
 			try {
-				clientSocket[socket.id].systemId = memory.system.key[data.apiKey].id;
+				clientSocket[socket.id].systemId = memory.system.key[data.apiKey];
 				clientSocket[socket.id].isServer = true;
-				if ( memory.online.server == undefined ) memory.online.server = 0;
-				memory.online.server++;
-				util.responseToAllClient('reload-'+memory.system.key[data.apiKey].id, { success: true });
+				util.responseToAllClientInRoom('client-system-'+clientSocket[socket.id].systemId, 'server-reload', {});
 			}
 			catch(err) {
 				console.log(err);
@@ -226,20 +209,32 @@ bluebird.bind({}).then(function() {
 				util.responseToSender(socket, name, { success: success });
 				if (success) {
 					clientSocket[socket.id].id = token.id;
-					if (memory.member.id[token.id].sessionList == undefined) memory.member.id[token.id].sessionList = [];
-					memory.member.id[token.id].sessionList.push(socket.id);
-					util.alertMultipleLogin(token.id, socket.id);
+					clientSocket[socket.id].companyId = token.companyId;
+							
+					// Company
+					socket.join('company-'+token.companyId);
+					// Member
+					var memberRoom = 'company-'+token.companyId+'-member-'+token.id;
+					socket.join(memberRoom);
+
+					var room = io.sockets.adapter.rooms[memberRoom];
+					if (room.length > 1) {
+						util.responseToAllClientInRoomExceptSender(socket, memberRoom, 'alert-login', {});
+					}
+
+					//if (memory.member[data.session.companyId][token.id].sessionList == undefined) memory.member[data.session.companyId][token.id].sessionList = [];
+					//memory.member[data.session.companyId][token.id].sessionList.push(socket.id);
+					//util.alertMultipleLogin(token.id, socket.id);
 				}
 				else {
-					if(memory.status.loadedMemberData) util.responseToSender(socket, 'logout', { access: false });
-					else util.responseToSender(socket, 'requestToken', {});
+					util.responseToSender(socket, name, { success: false });
+					util.responseToSender(socket, 'logout', {});
 				}
 			} catch (err) {
+				console.log(err);
 				util.responseToSender(socket, name, { success: false });
-				if(memory.status.loadedMemberData) util.responseToSender(socket, 'logout', { access: false });
-				else util.responseToSender(socket, 'requestToken', {});
+				util.responseToSender(socket, 'logout', {});
 			}
-			//initial.setLocale(redisClient, socket, data.local);
 		});
 
 		socket.on('api', function(data) {
@@ -248,18 +243,18 @@ bluebird.bind({}).then(function() {
 
 			if ( data.apiKey == undefined ) {
 				if ( socket.handshake.headers['origin'] != undefined ) { // ถ้าเข้าระบบโดยใช้ Browser
-					try { systemId = memory.system.origin[socket.handshake.headers['origin']].id } 
+					try { systemId = memory.system.origin[socket.handshake.headers['origin']] } 
 					catch(err) {
-						util.responseError(socket, name, {action: name, error: 'APP0001', errorMessage: clientSocket[socket.id].i18n.__('This operation is not allowed for')+' origin '+socket.handshake.headers['origin'],
+						util.responseError(socket, name, {action: name, error: 'APP0001', errorMessage: util.i18n(clientSocket[socket.id].local, 'This operation is not allowed for')+' origin '+socket.handshake.headers['origin'],
 								info: {ip: socket.handshake.headers['x-real-ip'],userAgent: socket.handshake.headers['user-agent'],referer: socket.handshake.headers['referer']}
 						});
 					}
 				}
 			}
 			else {
-				try { systemId = memory.system.key[data.apiKey].id }
+				try { systemId = memory.system.key[data.apiKey] }
 				catch(err) {
-					util.responseError(socket, name, {action: name, error: 'APP0002', errorMessage: clientSocket[socket.id].i18n.__('This operation is not allowed for')+' API Key '+data.apiKey,
+					util.responseError(socket, name, {action: name, error: 'APP0002', errorMessage: util.i18n(clientSocket[socket.id].local, 'This operation is not allowed for')+' API Key '+data.apiKey,
 							info: {ip: socket.handshake.headers['x-real-ip']}
 					});
 				}
@@ -267,10 +262,17 @@ bluebird.bind({}).then(function() {
 
 			if ( systemId != null ) {
 				data.systemId = systemId;
+				
+				// System
+				socket.join('system-'+data.systemId);
+				// Client's System
+				socket.join('client-system-'+data.systemId);
+
+				if (clientSocket[socket.id].companyId == undefined) clientSocket[socket.id].companyId = memory.system[systemId].company;
 				data.command = 'sp_SystemAccessCallCount \''+systemId+'\', \''+data.module+'\', \''+data.action+'\'';
 				util.execute(data);
 				var allow = false;
-				try { allow = memory.systemAccess[systemId+'-'+data.module+'-'+data.action].allow } catch(err) {}
+				try { allow = memory.systemAccess[systemId+'-'+data.module+'-'+data.action] } catch(err) {}
 				if ( allow ) {
 					fs.exists('./objects/'+data.module+'.js', function (exists) {
 						if (!exists) {
@@ -296,7 +298,7 @@ bluebird.bind({}).then(function() {
 				}
 			}
 			else {
-				util.responseError(socket, name, {action: name, error: 'APP0005', errorMessage: i18n.__('Out of Service'),
+				util.responseError(socket, name, {action: name, error: 'APP0005', errorMessage: util.i18n(clientSocket[socket.id].local, 'Out of Service'),
 						info: {ip: socket.handshake.headers['x-real-ip']}
 				});
 			}
@@ -304,5 +306,4 @@ bluebird.bind({}).then(function() {
 		});
 
 	});
-
-});
+}

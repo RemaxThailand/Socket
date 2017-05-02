@@ -18,6 +18,10 @@ exports.loadi18nData = function() {
 	util.query(this.loadi18n, { command: 'sp_i18nData' });
 }
 
+exports.loadCompanyData = function() {
+	util.query(this.loadCompany, { command: 'sp_CompanyData' });
+}
+
 exports.loadSystem = function(recordset, data) {
 	if (recordset != undefined && recordset.length > 0) {
 		memory.system = {
@@ -29,23 +33,20 @@ exports.loadSystem = function(recordset, data) {
 				secretKey: recordset[i].secretKey,
 				name: recordset[i].name,
 				description: recordset[i].description,
+				company: recordset[i].company
 			}
 
 			if(recordset[i].type.toLowerCase() == 'web'){
-				memory.system.origin[recordset[i].origin] = {
-					id: recordset[i].id,
-				}
+				memory.system.origin[recordset[i].origin] = recordset[i].id
 			}
-			memory.system.key[recordset[i].apiKey] = {
-				id: recordset[i].id,
-			}
+			memory.system.key[recordset[i].apiKey] = recordset[i].id;
 		}
-		console.log(colors.yellow('Load ')+colors.cyan('API System Data')+' (Total ' + colors.cyan.bold(recordset.length) + ' records) : ' + colors.bold.green('Success'));
+		debug(colors.yellow('Load ')+colors.cyan('API System Data')+' (Total ' + colors.cyan.bold(recordset.length) + ' records) : ' + colors.bold.green('Success'));
 	}
 	else {
-		console.log(colors.yellow('Load ')+colors.cyan('API System Data')+' : ' + colors.bold.red('No Data'));
+		debug(colors.yellow('Load ')+colors.cyan('API System Data')+' : ' + colors.bold.red('No Data'));
 	}
-	memory.status.loadedSystemData = true;
+	util.setLoaded('systemData');
 }
 
 
@@ -53,81 +54,133 @@ exports.loadSystemAccess = function(recordset, data) {
 	if (recordset != undefined && recordset.length > 0) {
 		memory.systemAccess = {};
 		for (i = 0; i < recordset.length; i++) {
-			memory.systemAccess[recordset[i].system+'-'+recordset[i].method+'-'+recordset[i].action] = {
-				allow: recordset[i].allow,
-				callCount: recordset[i].callCount,
-				callDate: recordset[i].callDate,
-			}
+			memory.systemAccess[recordset[i].system+'-'+recordset[i].method+'-'+recordset[i].action] = recordset[i].allow;
 		}
-		console.log(colors.yellow('Load ')+colors.cyan('System Access Data')+' (Total ' + colors.cyan.bold(recordset.length) + ' records) : ' + colors.bold.green('Success'));
+		debug(colors.yellow('Load ')+colors.cyan('System Access Data')+' (Total ' + colors.cyan.bold(recordset.length) + ' records) : ' + colors.bold.green('Success'));
 	}
 	else {
-		console.log(colors.yellow('Load ')+colors.cyan('System Access Data')+' : ' + colors.bold.red('No Data'));
+		debug(colors.yellow('Load ')+colors.cyan('System Access Data')+' : ' + colors.bold.red('No Data'));
 	}
-	memory.status.loadedSystemAccessData = true;
+	util.setLoaded('systemAccessData');
 }
 
 
 exports.loadMember = function(recordset, data) {
 	if (recordset != undefined && recordset.length > 0) {
-		memory.member = {
-			id: {},
-			username: {}
-		}
+		memory.member = {};
 		for (i = 0; i < recordset.length; i++) {
-			memory.member.id[recordset[i].id] = {}
-			memory.member.id[recordset[i].id].allowMultipleLogin = false;
-			recordset[i].password = util.decrypt(recordset[i].password, recordset[i].username.toLowerCase());
-			memory.member.username[recordset[i].username.toLowerCase()] = {
-				password: recordset[i].password,
-				id : recordset[i].id
+			if (memory.member[recordset[i].company] == undefined) memory.member[recordset[i].company] = {
+				username: {}
+			}
+			memory.member[recordset[i].company][recordset[i].id] = {}
+			if (recordset[i].active) {
+				memory.member[recordset[i].company][recordset[i].id].allowMultipleLogin = false;
+				recordset[i].password = util.decrypt(recordset[i].password, recordset[i].username.toLowerCase());
+				memory.member[recordset[i].company].username[recordset[i].username.toLowerCase()] = {
+					password: recordset[i].password,
+					id : recordset[i].id
+				}
 			}
 			delete recordset[i].password;
 			for (var k in recordset[i]){
 				if (recordset[i][k] != null && recordset[i][k] != '') { 
-					memory.member.id[recordset[i].id][k] = recordset[i][k];
+					memory.member[recordset[i].company][recordset[i].id][k] = recordset[i][k];
 				}
 			}
+			delete memory.member[recordset[i].company][recordset[i].id].company;
+			delete memory.member[recordset[i].company][recordset[i].id].id;
 		}
-		console.log(colors.yellow('Load ')+colors.cyan('Member Data')+' (Total ' + colors.cyan.bold(recordset.length) + ' records) : ' + colors.bold.green('Success'));
+		debug(colors.yellow('Load ')+colors.cyan('Member Data')+' (Total ' + colors.cyan.bold(recordset.length) + ' records) : ' + colors.bold.green('Success'));
 	}
 	else {
-		console.log(colors.yellow('Load ')+colors.cyan('Member Data')+' : ' + colors.bold.red('No Data'));
+		debug(colors.yellow('Load ')+colors.cyan('Member Data')+' : ' + colors.bold.red('No Data'));
 	}
-	memory.status.loadedMemberData = true;
+	util.setLoaded('memberData');
+}
+
+
+exports.loadCompany = function(recordset, data) {
+	if (recordset != undefined && recordset.length > 0) {
+		memory.company = {};
+		for (i = 0; i < recordset.length; i++) {
+			memory.company[ recordset[i].id ] = {
+				name: recordset[i].name,
+				website: recordset[i].website,
+				address: recordset[i].address
+			}
+		}
+		debug(colors.yellow('Load ')+colors.cyan('Company Data')+' (Total ' + colors.cyan.bold(recordset.length) + ' records) : ' + colors.bold.green('Success'));
+	}
+	else {
+		debug(colors.yellow('Load ')+colors.cyan('Company Data')+' : ' + colors.bold.red('No Data'));
+	}
+	util.setLoaded('companyData');
 }
 
 
 exports.loadScreenMapping = function(recordset, data) {
-	//console.log(data);
-	//console.log('loadScreenMapping');
-	//console.log(recordset);
+	// https://github.com/RemaxThailand/Socket/wiki/ตัวแปรหลักในระบบ-:-Memory#screen
 	if (recordset != undefined && recordset.length > 0) {
-		/*memory.screen = {
-			memberType: {},
-			screen: {}
-		}*/
-		for (i = 0; i < recordset.length; i++) {
-			/*memory.memberType = {}
-			memory.member.id[recordset[i].id].allowMultipleLogin = false;
-			recordset[i].password = util.decrypt(recordset[i].password, recordset[i].username.toLowerCase());
-			memory.member.username[recordset[i].username.toLowerCase()] = {
-				password: recordset[i].password,
-				id : recordset[i].id
+		memory.memberType = {}
+		memory.screen = {}
+		for (i = 0; i < recordset[0].length; i++) { // Member Type
+			if ( memory.memberType[recordset[0][i].company] == undefined ) memory.memberType[recordset[0][i].company] = {}
+			memory.memberType[recordset[0][i].company][recordset[0][i].id] = {
+				index: recordset[0][i].index,
+				active: recordset[0][i].active
 			}
-			delete recordset[i].password;
-			for (var k in recordset[i]){
-				if (recordset[i][k] != null && recordset[i][k] != '') { 
-					memory.member.id[recordset[i].id][k] = recordset[i][k];
-				}
-			}*/
 		}
-		console.log(colors.yellow('Load ')+colors.cyan('Screen Mapping Data')+' (Total ' + colors.cyan.bold(recordset.length) + ' records) : ' + colors.bold.green('Success'));
+		for (i = 0; i < recordset[1].length; i++) { // Screen
+			// Company
+			if ( memory.screen[recordset[1][i].company] == undefined ) memory.screen[recordset[1][i].company] = {}
+			// Company > MemberType
+			if ( memory.screen[recordset[1][i].company][recordset[1][i].memberType] == undefined ) {
+				memory.screen[recordset[1][i].company][recordset[1][i].memberType] = {
+					index: memory.memberType[recordset[1][i].company][recordset[1][i].memberType].index,
+					active: memory.memberType[recordset[1][i].company][recordset[1][i].memberType].active
+				};
+			}
+			// Company > MemberType > System
+			if ( memory.screen[recordset[1][i].company][recordset[1][i].memberType][recordset[1][i].system] == undefined ) memory.screen[recordset[1][i].company][recordset[1][i].memberType][recordset[1][i].system] = {};
+			// Company > MemberType > System > ScreenGroup
+			if ( memory.screen[recordset[1][i].company][recordset[1][i].memberType][recordset[1][i].system][recordset[1][i].screenGroup] == undefined )
+				memory.screen[recordset[1][i].company][recordset[1][i].memberType][recordset[1][i].system][recordset[1][i].screenGroup] = {
+					index: recordset[1][i].screenGroupIndex,
+					child: {}
+				};
+			// Company > MemberType > System > ScreenGroup > Main Screen
+			if (recordset[1][i].parent == '') {
+				if ( memory.screen[recordset[1][i].company][recordset[1][i].memberType][recordset[1][i].system][recordset[1][i].screenGroup].child[recordset[1][i].screen] == undefined ) {
+					memory.screen[recordset[1][i].company][recordset[1][i].memberType][recordset[1][i].system][recordset[1][i].screenGroup].child[recordset[1][i].screen] = {
+						insert: recordset[1][i].canInsert,
+						update: recordset[1][i].canUpdate,
+						delete: recordset[1][i].canDelete,
+						index: recordset[1][i].index,
+						link: recordset[1][i].link,
+						icon: recordset[1][i].icon,
+						child: {}
+					}
+				}
+			}
+			// Company > MemberType > System > ScreenGroup > Main Screen > Screen
+			else {
+				memory.screen[recordset[1][i].company][recordset[1][i].memberType][recordset[1][i].system][recordset[1][i].screenGroup].child[recordset[1][i].parent].child[recordset[1][i].screen] = {
+					insert: recordset[1][i].canInsert,
+					update: recordset[1][i].canUpdate,
+					delete: recordset[1][i].canDelete,
+					index: recordset[1][i].index,
+					link: recordset[1][i].link,
+					icon: recordset[1][i].icon
+				}
+			}
+		}
+		delete memory.memberType;
+		debug(colors.yellow('Load ')+colors.cyan('Screen Mapping Data')+' (Total ' + colors.cyan.bold(recordset[1].length) + ' records) : ' + colors.bold.green('Success'));
 	}
 	else {
-		console.log(colors.yellow('Load ')+colors.cyan('Screen Mapping Data')+' : ' + colors.bold.red('No Data'));
+		debug(colors.yellow('Load ')+colors.cyan('Screen Mapping Data')+' : ' + colors.bold.red('No Data'));
 	}
-	memory.status.loadedScreenMapping = true;
+	util.setLoaded('screenMapping');
 }
 
 
@@ -139,12 +192,12 @@ exports.loadi18n = function(recordset, data) {
 			if ( memory.i18n[recordset[i].system][recordset[i].local] == undefined ) memory.i18n[recordset[i].system][recordset[i].local] = {};
 			memory.i18n[recordset[i].system][recordset[i].local][recordset[i].languageKey] = recordset[i].message;
 		}
-		console.log(colors.yellow('Load ')+colors.cyan('i18n Data')+' (Total ' + colors.cyan.bold(recordset.length) + ' records) : ' + colors.bold.green('Success'));
+		debug(colors.yellow('Load ')+colors.cyan('i18n Data')+' (Total ' + colors.cyan.bold(recordset.length) + ' records) : ' + colors.bold.green('Success'));
 	}
 	else {
-		console.log(colors.yellow('Load ')+colors.cyan('i18n Data')+' : ' + colors.bold.red('No Data'));
+		debug(colors.yellow('Load ')+colors.cyan('i18n Data')+' : ' + colors.bold.red('No Data'));
 	}
-	memory.status.loadedi18nData = true;
+	util.setLoaded('i18nData');
 }
 
 exports.addUser = function(socket) {

@@ -36,10 +36,17 @@ exports.action = function(data) {
 			}
 		}
 		else if ( data.action == 'multipleLoginNotAllow' ) {
-			util.emitToMemberIdExceptSender(data.session.id, data.socket.id, 'logout', {});
+			util.responseToAllClientInRoomExceptSender(data.socket, 'company-'+data.session.companyId+'-member-'+data.session.id, 'logout', {});
+			//util.emitToMemberIdExceptSender(data.session.id, data.socket.id, 'logout', {});
 		}
 		else if ( data.action == 'multipleLoginAllow' ) {
-			memory.member.id[data.session.id].allowMultipleLogin = true;
+			memory.member[data.session.companyId][data.session.id].allowMultipleLogin = true;
+		}
+		else if ( data.action == 'search' ) {
+			requiredField = util.completeRequiredFields(data, ['q']);
+			if (requiredField == '') {
+				this.searchResult(data);
+			}
 		}
 		else {
 			hasAction = false;
@@ -62,23 +69,32 @@ exports.action = function(data) {
 }
 
 exports.loginCheck = function(data) {
-	if ( memory.member.username[data.username] == undefined ){
+	if ( memory.member[data.session.companyId].username[data.username] == undefined ){
 		if (data.res != undefined) data.res.json({success: false, error: 'MBR0003', errorMessage: util.i18n('en', 'Username not found')});
 		if (data.socket != undefined) util.responseError(data.socket, data.socketName, {action: data.action, error: 'MBR0003', errorMessage: util.i18n(data.session.local, 'Username not found'), info: {} });
 	}
 	else {
-		if ( memory.member.username[data.username].password == data.password ) {
-			clientSocket[data.socket.id].id = memory.member.username[data.username].id;
+		if ( memory.member[data.session.companyId].username[data.username].password == data.password ) {
+			clientSocket[data.socket.id].id = memory.member[data.session.companyId].username[data.username].id;
 			data.token = {
-				id: memory.member.username[data.username].id,
+				companyId: data.session.companyId,
+				id: memory.member[data.session.companyId].username[data.username].id,
 				userAgent: (data.socket.handshake.headers['user-agent'] != undefined) ? data.socket.handshake.headers['user-agent'] : ''
-			};			
-			if (memory.member.id[data.token.id].sessionList == undefined) memory.member.id[data.token.id].sessionList = [];
-			memory.member.id[data.token.id].sessionList.push(data.socket.id);
-			if (memory.member.id[data.token.id].sessionList.length > 1) {
-				util.emitToMemberIdExceptSender(data.token.id, data.socket.id, 'alert-login', {});
-			}
+			};
+			util.execute({command : 'sp_MemberInitialData \''+clientSocket[data.socket.id].id+'\', \''+memory.system[data.systemId].company+'\''});
 			util.jwtSign(this.responseToken, config.crypto.password, data);
+
+			// Company
+			data.socket.join('company-'+data.session.companyId);
+			// Member
+			var memberRoom = 'company-'+data.session.companyId+'-member-'+clientSocket[data.socket.id].id;
+			data.socket.join(memberRoom);
+
+			var room = io.sockets.adapter.rooms[memberRoom];
+			if (room.length > 1) {
+				util.responseToAllClientInRoomExceptSender(data.socket, memberRoom, 'alert-login', {});
+			}
+
 		}
 		else {
 			if (data.res != undefined) data.res.json({success: false, error: 'MBR0004', errorMessage: util.i18n('en', 'Invalid Password')});
@@ -94,7 +110,7 @@ exports.responseToken = function(data, token) {
 }
 
 exports.basicInfoResult = function(data) {
-	if ( memory.member.id[data.session.id] == undefined ) {
+	if ( memory.member[data.session.companyId][data.session.id] == undefined ) {
 		if (data.socket != undefined) {
 			util.responseError(data.socket, data.socketName, {action: data.action, error: 'MBR0005', errorMessage: util.i18n(data.session.local, 'Member Data not found'), info: {} });
 			util.responseToSender(socket, 'logout', {});
@@ -104,7 +120,7 @@ exports.basicInfoResult = function(data) {
 		}
 	}
 	else {
-		var object = memory.member.id[data.session.id];
+		var object = memory.member[data.session.companyId][data.session.id];
 		var result = {
 			name: object.firstname == undefined ? (object.nickname == undefined ? object.username : object.nickname) : object.firstname,
 			memberType: util.i18n(data.session.local, 'role-'+object.memberType)
@@ -114,7 +130,7 @@ exports.basicInfoResult = function(data) {
 }
 
 exports.roleResult = function(data) {
-	if ( memory.member.id[data.session.id] == undefined ) {
+	if ( memory.member[data.session.companyId][data.session.id] == undefined ) {
 		if (data.socket != undefined) {
 			util.responseError(data.socket, data.socketName, {action: data.action, error: 'MBR0005', errorMessage: util.i18n(data.session.local, 'Member Data not found'), info: {} });
 			util.responseToSender(socket, 'logout', {});
@@ -124,35 +140,42 @@ exports.roleResult = function(data) {
 		}
 	}
 	else {
-		if (memory.member.id[data.session.id].roleList == undefined) {
+		if (memory.member[data.session.companyId][data.session.id].roleList == undefined) {
 			data.command = 'sp_MemberTypeData '+data.session.id;
 			util.query(this.loadRole, data);
 		}
 		else {
-			var result = util.translateRoleList(data.session.local, memory.member.id[data.session.id].roleList);
-			if (data.socket != undefined) util.responseToSender(data.socket, data.socketName, { success: true, result: result, memberType: memory.member.id[data.session.id].memberType });
+			var result = util.translateRoleList(data.session.local, memory.member[data.session.companyId][data.session.id].roleList);
+			if (data.socket != undefined) util.responseToSender(data.socket, data.socketName, { success: true, result: result, memberType: memory.member[data.session.companyId][data.session.id].memberType });
 		}
 	}
 }
 
 exports.loadRole = function(recordset, data) {
-	memory.member.id[data.session.id].roleList = [];
+	memory.member[data.session.companyId][data.session.id].roleList = [];
 	for(i=0; i<recordset.length; i++){
-		memory.member.id[data.session.id].roleList.push(recordset[i].memberType);
+		memory.member[data.session.companyId][data.session.id].roleList.push(recordset[i].memberType);
 	}
-	var result = util.translateRoleList(data.session.local, memory.member.id[data.session.id].roleList);
-	if (data.socket != undefined) util.responseToSender(data.socket, data.socketName, { success: true, result: result, memberType: memory.member.id[data.session.id].memberType });
+	var result = util.translateRoleList(data.session.local, memory.member[data.session.companyId][data.session.id].roleList);
+	if (data.socket != undefined) util.responseToSender(data.socket, data.socketName, { success: true, result: result, memberType: memory.member[data.session.companyId][data.session.id].memberType });
 }
 
 exports.roleChangeResult = function(data) {
-	if (memory.member.id[data.session.id].roleList != undefined && memory.member.id[data.session.id].roleList.indexOf(data.role) > -1){
-		memory.member.id[data.session.id].memberType = data.role;
-		if (data.socket != undefined && memory.member.id[data.session.id].sessionList != undefined) {
-			var result = util.translateRoleList(data.session.local, memory.member.id[data.session.id].roleList);
+	if (memory.member[data.session.companyId][data.session.id].roleList != undefined && memory.member[data.session.companyId][data.session.id].roleList.indexOf(data.role) > -1){
+		memory.member[data.session.companyId][data.session.id].memberType = data.role;
+		if (data.socket != undefined) {
+			var result = util.translateRoleList(data.session.local, memory.member[data.session.companyId][data.session.id].roleList);
 			util.responseToSender(data.socket, 'api-member-role', { success: true, result: result, memberType: data.role });
-			if ( memory.member.id[data.session.id].sessionList.length > 1 ) {
-				util.emitToMemberIdExceptSender(data.session.id, data.socket.id, 'reload-member-role', {});
+			
+			var memberRoom = 'company-'+data.session.companyId+'-member-'+data.session.id;
+			var room = io.sockets.adapter.rooms[memberRoom];
+			if (room.length > 1) {
+				util.responseToAllClientInRoomExceptSender(data.socket, memberRoom, 'reload-member-role', {});
 			}
+
+			/*if ( memory.member[data.session.companyId][data.session.id].sessionList.length > 1 ) {
+				util.emitToMemberIdExceptSender(data.session.id, data.socket.id, 'reload-member-role', {});
+			}*/
 		}
 		data.command = 'sp_MemberTypeUpdate '+data.session.id+', \''+data.role+'\'';
 		util.execute(data);
@@ -160,26 +183,10 @@ exports.roleChangeResult = function(data) {
 }
 
 exports.screenResult = function(data) {
-	if (memory.member.id[data.session.id].roleList != undefined && memory.member.id[data.session.id].roleList.indexOf(data.role) > -1){
-		if (memory.memberScreen == undefined) memory.memberScreen = {};
-		if (memory.memberScreen[data.role] != undefined) {
-			this.loadScreen(null, data);
+	if (memory.member[data.session.companyId][data.session.id].roleList != undefined && memory.member[data.session.companyId][data.session.id].roleList.indexOf(data.role) > -1){
+		if (data.socket != undefined) {
+			util.responseToSender(data.socket, data.socketName, { success: true, result: util.memberTypeMenu(data.session.companyId, data.role, data.systemId, data.session.local) });
 		}
-		else {
-			data.command = 'sp_MemberScreenData \''+data.systemId+'\', \''+memory.member.id[data.session.id].memberType+'\'';
-			util.query(this.loadScreen, data);
-		}
-	}
-}
-
-exports.loadScreen = function(recordset, data) {
-	if (recordset != null) memory.memberScreen[data.role] = recordset;
-	if (data.socket != undefined) {
-		var result = util.translateScreen(data.session.local, memory.memberScreen[data.role]);
-		util.responseToSender(data.socket, data.socketName, { success: true, result: result });
-		/*if ( memory.member.id[data.session.id].sessionList.length > 1 ) {
-			util.emitToMemberIdExceptSender(data.session.id, data.socket.id, 'reload-member-screen', {});
-		}*/
 	}
 }
 
@@ -197,4 +204,25 @@ exports.infoResult = function(socket, name, data, object) {
 		delete object.password;
 		util.responseToSender(socket, name, { success: true, result: object });
 	}*/
+}
+
+exports.searchResult = function(data) {
+	data.q = data.q.toLowerCase();
+	var result = [];
+	Object.keys(memory.member[data.session.companyId]).forEach(function(key) {
+		if (	memory.member[data.session.companyId][key].id.indexOf(data.q) != -1
+				|| memory.member[data.session.companyId][key].username.toLowerCase().indexOf(data.q) != -1
+				|| (memory.member[data.session.companyId][key].firstname != undefined && memory.member[data.session.companyId][key].firstname.toLowerCase().indexOf(data.q) != -1)
+				|| (memory.member[data.session.companyId][key].lastname != undefined && memory.member[data.session.companyId][key].lastname.toLowerCase().indexOf(data.q) != -1)
+				|| (memory.member[data.session.companyId][key].nickname != undefined && memory.member[data.session.companyId][key].nickname.toLowerCase().indexOf(data.q) != -1)
+				|| (memory.member[data.session.companyId][key].email != undefined && memory.member[data.session.companyId][key].email.toLowerCase().indexOf(data.q) != -1)
+				|| (memory.member[data.session.companyId][key].mobile != undefined && memory.member[data.session.companyId][key].mobile.indexOf(data.q) != -1)
+		) {
+			var member = JSON.parse(JSON.stringify(memory.member[data.session.companyId][key]));
+			member.memberTypeName = util.i18n(data.session.local, 'role-'+member.memberType);
+			result.push(member);
+		}
+	});
+	if (data.res != undefined) data.res.json({success: true, result: result});
+	if (data.socket != undefined) util.responseToSender(data.socket, data.socketName, { success: true, result: result }); //** responseToSender
 }
